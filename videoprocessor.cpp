@@ -432,9 +432,13 @@ void VideoProcessor::run()
 		//}
 
 		// introduce a delay
-		if (delay >= 0 && cv::waitKey(delay) >= 0)
+		if (delay >= 0 )
 		{
-			stopIt();
+			int ret = cv::waitKey(delay);
+			if (ret > 0)
+			{
+				//stopIt();
+			}
 		}
 		else
 		{

@@ -79,8 +79,8 @@ void Segmentation()
 	/////////////////
 	float fps = 30.f;
 
-	float delay = 1000. / processor.getFrameRate();
-	//float delay = -1.0f;
+	//float delay = 1000. / processor.getFrameRate();
+	float delay = -1.0f;
 	//float delay = 1000. / fps;
 
 	/////////////////////////////////////////////////////

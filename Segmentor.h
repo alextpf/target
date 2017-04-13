@@ -15,4 +15,10 @@ public:
 	~Segmentor() {}
 
 	virtual void Process(cv::Mat & input, cv::Mat & output);	
+
+private:
+	void DrawContour(
+		cv::Mat & frame, 
+		const std::vector< std::vector < cv::Point > > & contours, 
+		cv::Scalar color);
 };
