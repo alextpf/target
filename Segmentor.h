@@ -21,4 +21,10 @@ private:
 		cv::Mat & frame, 
 		const std::vector< std::vector < cv::Point > > & contours, 
 		cv::Scalar color);
+
+	void FindConnectedComp(const cv::Mat & img);
+	void FitEllipse(const cv::Mat & img);
+	void ReOrganizeData(const std::vector<bool> & keepElement);
+
+	std::vector< std::vector< cv::Point2i > > m_Data;
 };
