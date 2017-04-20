@@ -2,11 +2,14 @@
 #include "Segmentor.h"
 #include <tuple>
 
-#define PI						3.1415926
-#define DEG_TO_RAD				PI / 180.0f
-#define NUM_ITER				1
-#define ELLIPSE_THRESH			9
-#define ELLIPSE_ERR_PERCENTAGE	0.03f //3%
+#define PI							3.1415926
+#define DEG_TO_RAD					PI / 180.0f
+#define NUM_ITER					1
+#define ELLIPSE_THRESH				20
+#define ELLIPSE_ERR_PERCENTAGE		0.10f //3%
+#define EPSLON						5 * 5 // for ellipse less than 5 pixels, ignore it
+#define ASPECT_RATIO_THRESH			4.0f
+#define ELLIPSE_OFF_CENTER_THRESH	0.7f
 
 // color definition
 #define BLUE   cv::Scalar(255, 0, 0) //BGR
@@ -16,7 +19,9 @@
 #define WHITE  cv::Scalar(255, 255, 255)
 #define BLACK  cv::Scalar(0,0,0)
 
-#define DEBUG
+//#define DEBUG
+//#define DEBUG_ELLIPSE
+//#define DEBUG_ELLIPSE2
 
 //=======================================================================
 // helper function to show type
@@ -44,7 +49,7 @@ std::string type2str(int type)
 	return r;
 }//std::string type2str(int type)
 
- //=======================================================================
+//=======================================================================
 void Segmentor::FindConnectedComp(const cv::Mat & img)
 {
 	cv::Mat connComps;	// Connected components
@@ -57,7 +62,7 @@ void Segmentor::FindConnectedComp(const cv::Mat & img)
 
 	int numComponents = stats.rows - 1; // excluding the background
 
-	m_Data.reserve(numComponents);
+	m_Data.clear();// init m_Data
 
 	for (int i = 0; i < numComponents; i++)
 	{
@@ -105,7 +110,7 @@ void Segmentor::FindConnectedComp(const cv::Mat & img)
 
 }//FindConnectedComp
 
-void Segmentor::FitEllipse(const cv::Mat & img)
+bool Segmentor::FitEllipse(const cv::Mat & img)
 {
 	int MIN_ELEMENT_SIZE = img.rows / 5;
 
@@ -116,106 +121,218 @@ void Segmentor::FitEllipse(const cv::Mat & img)
 	cv::Mat tmp1 = cv::Mat::zeros(img.rows, img.cols, CV_8UC3);
 #endif
 
+	m_EllipseBox.clear();
+
 	for (int i = 0; i < numComponents; i++)
 	{
 		keepElement.push_back(true);//default is to keep this element
+		
+		m_EllipseBox.push_back(cv::RotatedRect());// dummy var
 
+		// 1. if the ellipse is too small, delete it
 		int size = m_Data[i].size();
-		if (size > MIN_ELEMENT_SIZE)
+		if (size < MIN_ELEMENT_SIZE)
 		{
-			cv::RotatedRect box = cv::fitEllipse(m_Data[i]);
+			std::cout << "noise" << std::endl;
+			keepElement[i] = false;
+			continue;
+		}
+
+		cv::RotatedRect box = cv::fitEllipse(m_Data[i]);
+		m_EllipseBox[i] = box;
+
+#ifdef DEBUG_ELLIPSE //show individual ellipse
+
+		cv::Mat tmp3 = cv::Mat::zeros(img.rows, img.cols, CV_8UC3);
+
+		cv::Vec3b color(255, 255, 255);
+
+		for (int idx = 0; idx < size; idx++)
+		{
+			int c = m_Data[i][idx].x;
+			int r = m_Data[i][idx].y;
+			tmp3.at<cv::Vec3b>(r, c) = color;
+		}
+
+		cv::ellipse(tmp3, box, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
+
+		char name[50];
+		sprintf_s(name, "ellipse %d:", i);
+		cv::imshow(name, tmp3);
+#endif
 
 #ifdef DEBUG //show ellipse
-			cv::ellipse(tmp1, box, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
-			cv::ellipse(tmp1, box.center, box.size*0.5f, box.angle, 0, 360, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
-			cv::Point2f vtx[4];
-			box.points(vtx);
-			for (int j = 0; j < 4; j++)
-			{
-				cv::line(tmp1, vtx[j], vtx[(j + 1) % 4], cv::Scalar(0, 255, 0), 1, cv::LINE_AA);
-			}
+		cv::ellipse(tmp1, box, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
+		cv::ellipse(tmp1, box.center, box.size*0.5f, box.angle, 0, 360, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
+		cv::Point2f vtx[4];
+		box.points(vtx);
+		for (int j = 0; j < 4; j++)
+		{
+			cv::line(tmp1, vtx[j], vtx[(j + 1) % 4], cv::Scalar(0, 255, 0), 1, cv::LINE_AA);
+		}
 #endif
-			cv::Point ellipseCenter = box.center;
-			cv::Point axis ( box.size.width * 0.5f, box.size.height * 0.5f );
-			float angleDeg = box.angle;
-			float angleRad = angleDeg * DEG_TO_RAD;
 
-			//---------------------
-			// Rotation matrix: rotate counter-clockwise by "u" radian
-			//
-			// | cos(u), -sin(u) |
-			// | sin(u),  cos(u) |
-			//
-			//---------------------
-			cv::Matx22f rotMat;
-			rotMat(0, 0) = std::cos(angleRad);
-			rotMat(0, 1) = -std::sin(angleRad);
-			rotMat(1, 0) = -rotMat(0, 1);
-			rotMat(1, 1) = rotMat(0, 0);
+		cv::Point ellipseCenter = box.center;
+		cv::Point axis(box.size.width * 0.5f, box.size.height * 0.5f);
+		float angleDeg = box.angle;
+		float angleRad = angleDeg * DEG_TO_RAD;
 
-			// 3. go back and check the m_Data by the model (ellipse)
-			int errCount = 0;
-			int numErrThresh = size * ELLIPSE_ERR_PERCENTAGE;
+		// 2. if the aspect ratio of the detected ellipse is greater than some threshold, delete it
+		float longSide, shortSide;
 
-			for (int idx = 0; idx < size; idx++)
-			{
-				cv::Matx21f pt(m_Data[i][idx].y - ellipseCenter.y/*col*/, m_Data[i][idx].x - ellipseCenter.x/*row*/);
-				pt = rotMat * pt;
-
-				// now check if the point locates near the ellipse
-				float term1 = pt(0, 0) / axis.x;
-				float term2 = pt(1, 0) / axis.y;
-				float t = term1 * term1 + term2 * term2;
-
-				if (fabs( t - 1) > ELLIPSE_THRESH)
-				{
-					errCount++;
-					if (errCount > numErrThresh)
-					{
-						keepElement[i] = false;
-						break;
-					}//if
-				}// if
-			}//for
+		if (box.size.width > box.size.height)
+		{
+			longSide = box.size.width;
+			shortSide = box.size.height;
 		}
 		else
 		{
-			keepElement[i] = false;
-			std::cout << "noise: " << i << std::endl;
+			longSide = box.size.height;
+			shortSide = box.size.width;
 		}
+
+		const float aspectRatio = longSide / shortSide;
+
+		if (aspectRatio > ASPECT_RATIO_THRESH)
+		{
+			std::cout << "aspect ratio too large" << std::endl;
+			keepElement[i] = false;
+			continue;
+		}
+
+		// 3. if the center of the ellipse is too far away from the image center, delete it
+		cv::Point imageCenter((float)img.cols / 2.0f, (float)img.rows / 2.0f);
+		cv::Point dif = imageCenter - ellipseCenter;
+		float difRatioX = std::fabs(dif.x) * 2.0f / (float)img.cols;
+		float difRatioY = std::fabs(dif.y) * 2.0f / (float)img.rows;
+
+		if (difRatioX > ELLIPSE_OFF_CENTER_THRESH || difRatioY > ELLIPSE_OFF_CENTER_THRESH)
+		{
+			std::cout << "ellipse center too close to edge" << std::endl;
+			keepElement[i] = false;
+			continue;
+		}
+
+		//---------------------
+		// Rotation matrix: rotate counter-clockwise by "u" radian
+		//
+		// | cos(u), -sin(u) |
+		// | sin(u),  cos(u) |
+		//
+		//---------------------
+		cv::Matx22f rotMat;
+		rotMat(0, 0) = std::cos(angleRad);
+		rotMat(0, 1) = -std::sin(angleRad);
+		rotMat(1, 0) = -rotMat(0, 1);
+		rotMat(1, 1) = rotMat(0, 0);
+
+		// 4. go back and check the m_Data by the model (ellipse)
+		int errCount = 0;
+		int numErrThresh = size * ELLIPSE_ERR_PERCENTAGE;
+
+		for (int idx = 0; idx < size; idx++)
+		{
+			cv::Matx21f pt(m_Data[i][idx].y - ellipseCenter.y/*col*/, m_Data[i][idx].x - ellipseCenter.x/*row*/);
+			pt = rotMat * pt;
+
+			// now check how far the point is from the ellipse
+			//
+			//             Y
+			//             ^    * Pt(x,y)
+			//           b_|_  /
+			//       .     |  /  .
+			//     .       | / u   . a
+			//  --|--------|--------|---> X
+			//     .       |       .
+			//       .    _|_    .
+			//             |
+			//
+			// Ellipse eq: (x/a)^2 + (y/b)^2 = 1
+			//
+			// Problem: given a point Pt(x,y), find its distance to the ellipse.
+			// - Suppose the distance between Pt and origin is t (i.e. t = sqrt(x^2 + y^2) )
+			// - Suppose the closest point on the ellipse to Pt is m, and it has distance to the origin of r.
+			// The problem here becomes to find r, and the answer to this problem is (t - r).
+			//
+			// Derivation:
+			// The coordinate of m can be written as m = ( r*cos(u), r*sin(u) )
+			// where u is the angle between r and X-axis.
+			// Substitude m into ellipse eq:
+			// (r*cos(u)/a)^2+(r*sin(u)/b)^2 = 1
+			// r^2 * ( (cos(u)/a)^2 + (sin(u)/b)^2 ) = 1
+			// r^2 = 1 / ( (cos(u)/a)^2 + (sin(u)/b)^2 )
+			// where cos(u) and sin(u) can be easily obtained by:
+			// - cos(u) = x / sqrt(x^2+y^2) = x / t
+			// - sin(u) = y / sqrt(x^2+y^2) = y / t
+
+			const float tSqr = pt(0, 0) * pt(0, 0) + pt(1, 0) * pt(1, 0);
+
+			if (tSqr < EPSLON)
+			{
+				std::cout << "ellipse too small" << std::endl;
+				keepElement[i] = false;
+				break;
+			}
+
+			const float t = std::sqrt(tSqr);
+
+			const float cos_u = pt(0, 0) / t;
+			const float sin_u = pt(1, 0) / t;
+
+			float term1 = cos_u / axis.x;
+			float term2 = sin_u / axis.y;
+
+			const float r = 1.0f / std::sqrt(term1 * term1 + term2 * term2);
+			const float diff = fabs(t - r);
+			if ( diff > ELLIPSE_THRESH)
+			{
+				errCount++;
+				if (errCount > numErrThresh)
+				{
+					std::cout << "data doesn't resemble an ellipse" << std::endl;
+					keepElement[i] = false;
+					break;
+				}//if
+			}// if
+		}//for
 	}//for (int i = 0; i < numComponents; i++)
 
 #ifdef DEBUG //show connected component
 	cv::imshow("ellipse:", tmp1);
 #endif
+
 	// 3. re-organize the data
-	ReOrganizeData(keepElement);
+	if (!ReOrganizeData(keepElement))
+	{
+		return false;
+	}
 
 #ifdef DEBUG //show connected component
-	tmp1 = cv::Mat::zeros(img.rows, img.cols, CV_8UC3);
+	cv::Mat tmp2 = cv::Mat::zeros(img.rows, img.cols, CV_8UC3);
 	numComponents = m_Data.size();
 
 	for (int i = 0; i < numComponents; i++)
 	{
-		cv::RotatedRect box = cv::fitEllipse(m_Data[i]);
+		const cv::RotatedRect & box = m_EllipseBox[i];
 
-		cv::ellipse(tmp1, box, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
-		
+		cv::ellipse(tmp2, box, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
 	}
 
-	cv::imshow("Connected:", tmp1);
-
+	cv::imshow("Connected:", tmp2);
 #endif
+
 }//FitEllipse
 
  //=======================================================================
-void Segmentor::ReOrganizeData(const std::vector<bool> & keepElement)
+bool Segmentor::ReOrganizeData(const std::vector<bool> & keepElement)
 {
 	int numElement = m_Data.size();
+	int numEllipse = m_EllipseBox.size();
 	
-	if (keepElement.size() != numElement)
+	if (keepElement.size() != numElement || numEllipse != numElement )
 	{
-		return;
+		std::cout << "error, inconsistent size" << std::endl;
+		return false;
 	}
 
 	int k = 0;
@@ -226,12 +343,16 @@ void Segmentor::ReOrganizeData(const std::vector<bool> & keepElement)
 			continue;
 		}
 
+		m_EllipseBox[k] = m_EllipseBox[i];
 		m_Data[k++] = m_Data[i];
 	}
 
 	m_Data.resize(k);
+	m_EllipseBox.resize(k);
 
 	std::cout << "num elements: " << k << std::endl;
+
+	return true;
 }//ReOrganizeData
 
 //=======================================================================
@@ -310,8 +431,22 @@ void Segmentor::Process(cv::Mat & input, cv::Mat & output)
 		// 1. find connected components
 		FindConnectedComp(output);
 
-		// 2. loop through each component and fit it to ellipse
-		FitEllipse(output);
+		// 2 + 3 + 4: loop through each component and fit it to ellipse, delete the noise.
+		if (!FitEllipse(output))
+		{
+			return;
+		}
+
+		// overlay the ellipse on top of the image
+		output = input;
+		int numComponents = m_Data.size();
+
+		for (int i = 0; i < numComponents; i++)
+		{
+			const cv::RotatedRect & box = m_EllipseBox[i];
+
+			cv::ellipse(output, box, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
+		}
 
 	}//if (doCanny)
 

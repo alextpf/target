@@ -23,8 +23,9 @@ private:
 		cv::Scalar color);
 
 	void FindConnectedComp(const cv::Mat & img);
-	void FitEllipse(const cv::Mat & img);
-	void ReOrganizeData(const std::vector<bool> & keepElement);
+	bool FitEllipse(const cv::Mat & img);
+	bool ReOrganizeData(const std::vector<bool> & keepElement);
 
-	std::vector< std::vector< cv::Point2i > > m_Data;
+	std::vector< std::vector< cv::Point2i > >	m_Data;
+	std::vector< cv::RotatedRect >				m_EllipseBox;
 };

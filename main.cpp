@@ -47,7 +47,7 @@ void Segmentation()
 	//char filename[] = "alex2";
 	//char filename[] = "clay2";
 	//char filename[] = "trap1";
-	char filename[] = "1";
+	char filename[] = "4";
 	//char filename[] = "thrower1";
 	//char filename[] = "thrower2";
 	//char filename[] = "baseball";
@@ -63,7 +63,8 @@ void Segmentation()
 	//int num = 830;//thrower2
 	//int num = 120;//baseball
 	
-	int startFrame = 0;// frame number we want to start at
+	int startFrame = 236;// frame number we want to start at
+	//int startFrame = 1;// frame number we want to start at
 
 	/////////////////////
 	// Input & Output
@@ -80,8 +81,8 @@ void Segmentation()
 	float fps = 30.f;
 
 	//float delay = 1000. / processor.getFrameRate();
-	float delay = -1.0f;
-	//float delay = 1000. / fps;
+	//float delay = -1.0f;
+	float delay = 1000. / fps;
 
 	/////////////////////////////////////////////////////
 	// Input
