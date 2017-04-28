@@ -63,8 +63,8 @@ void Segmentation()
 	//int num = 830;//thrower2
 	//int num = 120;//baseball
 	
-	int startFrame = 236;// frame number we want to start at
-	//int startFrame = 1;// frame number we want to start at
+	//int startFrame = 85;// frame number we want to start at
+	int startFrame = 1;// frame number we want to start at
 
 	/////////////////////
 	// Input & Output

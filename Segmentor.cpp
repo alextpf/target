@@ -5,11 +5,13 @@
 #define PI							3.1415926
 #define DEG_TO_RAD					PI / 180.0f
 #define NUM_ITER					1
-#define ELLIPSE_THRESH				20
-#define ELLIPSE_ERR_PERCENTAGE		0.10f //3%
+#define ELLIPSE_THRESH				10
+#define ELLIPSE_ERR_PERCENTAGE		0.05f
 #define EPSLON						5 * 5 // for ellipse less than 5 pixels, ignore it
 #define ASPECT_RATIO_THRESH			4.0f
 #define ELLIPSE_OFF_CENTER_THRESH	0.7f
+#define SAME_ELLIPSE_THRESH_RATIO   0.11f
+#define CENTER_DIF_THRESH_RATIO     0.05f			
 
 // color definition
 #define BLUE   cv::Scalar(255, 0, 0) //BGR
@@ -21,6 +23,7 @@
 
 //#define DEBUG
 //#define DEBUG_ELLIPSE
+//#define DEBUG_ELLIPSE3
 //#define DEBUG_ELLIPSE2
 
 //=======================================================================
@@ -163,16 +166,16 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 
 #ifdef DEBUG //show ellipse
 		cv::ellipse(tmp1, box, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
-		cv::ellipse(tmp1, box.center, box.size*0.5f, box.angle, 0, 360, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
-		cv::Point2f vtx[4];
+		
+		/*cv::Point2f vtx[4];
 		box.points(vtx);
 		for (int j = 0; j < 4; j++)
 		{
 			cv::line(tmp1, vtx[j], vtx[(j + 1) % 4], cv::Scalar(0, 255, 0), 1, cv::LINE_AA);
-		}
+		}*/
 #endif
 
-		cv::Point ellipseCenter = box.center;
+		cv::Point ellipseCenter = box.center; // in Image coordinate, i.e. origin at top-left corner, x pointing right, y pointing down
 		cv::Point axis(box.size.width * 0.5f, box.size.height * 0.5f);
 		float angleDeg = box.angle;
 		float angleRad = angleDeg * DEG_TO_RAD;
@@ -217,8 +220,7 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 		// Rotation matrix: rotate counter-clockwise by "u" radian
 		//
 		// | cos(u), -sin(u) |
-		// | sin(u),  cos(u) |
-		//
+		// | sin(u),  cos(u) |		
 		//---------------------
 		cv::Matx22f rotMat;
 		rotMat(0, 0) = std::cos(angleRad);
@@ -230,9 +232,66 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 		int errCount = 0;
 		int numErrThresh = size * ELLIPSE_ERR_PERCENTAGE;
 
+#ifdef DEBUG_ELLIPSE2		
+		cv::Mat tmp4 = cv::Mat::zeros(img.rows, img.cols, CV_8UC3);
+		
+		cv::Vec3b color(255, 255, 255);
+
+		//m_Data stores (column, row)
+		for (int idx = 0; idx < size; idx++)
+		{	
+			cv::Matx21f pt(m_Data[i][idx].x - ellipseCenter.x/*col*/, -m_Data[i][idx].y + ellipseCenter.y/*row*/); // such that x pointing right, and y pointing up
+			pt = rotMat * pt;
+
+			// convert back to image coordinate
+			int c = pt(0, 0) + img.cols / 2;
+			int r = img.rows / 2 - pt(1, 0);
+			if (c >= img.cols)
+			{
+				c = img.cols - 1;
+			}
+			else if (c < 0)
+			{
+				c = 0;
+			}
+
+			if (r >= img.rows)
+			{
+				r = img.rows - 1;
+			}
+			else if (r < 0)
+			{
+				r = 0;
+			}
+
+			tmp4.at<cv::Vec3b>(r, c) = color;
+		}
+
+		cv::Vec3b red(0, 0, 255);
+		// now draw the ellipse
+		// (x/a)^2+(y/b)^2 = 1
+		
+		for (int r = 0 ; r < img.rows; r++)
+		{
+			for (int c = 0; c < img.cols; c++)
+			{
+				float term1 = (float)(c - img.cols / 2) / axis.x;
+				float term2 = (float)(img.rows / 2 - r) / axis.y;
+				float tt = std::fabs(term1 * term1 + term2 * term2 - 1.0f);
+				if (tt < 0.01)
+				{
+					tmp4.at<cv::Vec3b>(r, c) = red;
+				}
+			}
+		}
+
+		char name[50];
+		sprintf_s(name, "Ortho ellipse %d:", i);
+		cv::imshow(name, tmp4);
+#endif
 		for (int idx = 0; idx < size; idx++)
 		{
-			cv::Matx21f pt(m_Data[i][idx].y - ellipseCenter.y/*col*/, m_Data[i][idx].x - ellipseCenter.x/*row*/);
+			cv::Matx21f pt(m_Data[i][idx].x - ellipseCenter.x/*col*/, -m_Data[i][idx].y + ellipseCenter.y/*row*/); // such that x pointing right, and y pointing up
 			pt = rotMat * pt;
 
 			// now check how far the point is from the ellipse
@@ -307,9 +366,170 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 		return false;
 	}
 
+	// 4. merge the ellipse if needed (this happens if the ellipse is broken, not in a single connected component)
+	numComponents = m_Data.size();
+	std::vector<int> mark;
+	for (int i = 0; i < numComponents; i++)
+	{
+		mark.push_back(-1);
+	}
+	
+	for (int i = 0; i < numComponents; i++)
+	{
+
+#ifdef DEBUG_ELLIPSE3 //show individual ellipse
+
+		cv::Mat tmp3 = cv::Mat::zeros(img.rows, img.cols, CV_8UC3);
+
+		cv::Vec3b color(255, 255, 255);
+		int size = m_Data[i].size();
+
+		for (int idx = 0; idx < size; idx++)
+		{
+			int c = m_Data[i][idx].x;
+			int r = m_Data[i][idx].y;
+			tmp3.at<cv::Vec3b>(r, c) = color;
+		}
+		const cv::RotatedRect & box = m_EllipseBox[i];
+
+		cv::ellipse(tmp3, box, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
+
+		char name[50];
+		sprintf_s(name, "ellipse3 %d:", i);
+		cv::imshow(name, tmp3);
+#endif
+		if (mark[i] == -1)
+		{
+			mark[i] = i;
+			const cv::RotatedRect & box1 = m_EllipseBox[i];
+			for (int j = i + 1; j < numComponents; j++)
+			{
+				if (mark[j] == -1)
+				{
+					const cv::RotatedRect & box2 = m_EllipseBox[j];
+					const float widthDif = std::fabs(box1.size.width - box2.size.width);
+					const float heightDif = std::fabs(box1.size.height - box2.size.height);
+					const float centerDif = std::fabs(box1.center.x - box2.center.x) + std::fabs(box1.center.y - box2.center.y); // city block distance
+
+					float siz = std::min(box1.size.width, box2.size.width);
+
+					const float SAME_ELLIPSE_THRESH = siz * SAME_ELLIPSE_THRESH_RATIO;
+					
+					if (widthDif < SAME_ELLIPSE_THRESH && heightDif < SAME_ELLIPSE_THRESH && centerDif < SAME_ELLIPSE_THRESH * 2.0f )
+					{
+						mark[j] = i; // same mark, to be merged
+					} // if
+				}// if
+			}// for j
+		}//if
+	}// for i
+
+	// do the merge
+	keepElement.clear();
+
+	for (int i = 0; i < numComponents; i++)
+	{	
+		keepElement.push_back(true);
+
+		if (mark[i] == -1)
+		{
+			keepElement[i] = false;
+			continue;
+		}
+
+		bool doMerge = false;
+
+		for (int j = i + 1; j < numComponents; j++)
+		{
+			if (mark[i] == mark[j])
+			{
+				mark[j] = -1;
+				doMerge = true;
+				m_Data[i].insert(m_Data[i].end(), m_Data[j].begin(), m_Data[j].end());
+			}
+		}
+	}// for i
+	
+	if (!ReOrganizeData(keepElement))
+	{
+		return false;
+	}
+
+	// 5. remove those ellipse that doesn't have a common center
+	// by clustering
+	std::vector<std::pair<cv::Point,int>> concentricCircles;
+	std::vector<int> map;
+
+	float CENTER_DIF_THRESH = (float)img.rows * CENTER_DIF_THRESH_RATIO * 2.0f;
+
+	numComponents = m_Data.size();
+	for (int i = 0; i < numComponents; i++)
+	{
+		map.push_back(-1); // init
+
+		const cv::Point & center1 = m_EllipseBox[i].center;
+		const int siz = concentricCircles.size();
+		bool found = false;
+
+		for (int j = 0; j < siz; j++)
+		{
+			const cv::Point center2 = concentricCircles[j].first;
+
+			const float centerDif = std::fabs(center1.x - center2.x) + std::fabs(center1.y - center2.y); // city block distance
+			
+			if (centerDif < CENTER_DIF_THRESH)
+			{
+				found = true;
+				map[i] = j;
+				concentricCircles[j].second++;
+				break;
+			}// if 
+		}// for j
+
+		if (!found)
+		{
+			std::pair<cv::Point, int> p(center1, 0);
+			concentricCircles.push_back(p);
+			map[i] = concentricCircles.size() - 1;
+		}// if
+	}// for i
+
+	const int siz = concentricCircles.size();
+	int max = -1;
+	int maxIdx = -1;
+
+	for (int i = 0; i < siz; i++)
+	{
+		int vote = concentricCircles[i].second;
+		if ( vote > max)
+		{
+			max = vote;
+			maxIdx = i;
+		}
+	}// for i
+
+	keepElement.clear();
+	
+	for (int i = 0; i < numComponents; i++)
+	{
+		if (map[i] != maxIdx)
+		{
+			keepElement.push_back(false);
+		}
+		else
+		{
+			keepElement.push_back(true);
+		}
+	}
+
+	if (!ReOrganizeData(keepElement))
+	{
+		return false;
+	}
+
 #ifdef DEBUG //show connected component
 	cv::Mat tmp2 = cv::Mat::zeros(img.rows, img.cols, CV_8UC3);
-	numComponents = m_Data.size();
+	numComponents = m_EllipseBox.size();
 
 	for (int i = 0; i < numComponents; i++)
 	{
@@ -421,12 +641,15 @@ void Segmentor::Process(cv::Mat & input, cv::Mat & output)
 		// ii. the target paper remains a plane, but the plane isn't necessarily perpendicular to the viewing angle.
 		//     This assumption can diviate from the true especailly when the paper vibrates/distored by the winds.
 		//
+		// iii. each circle may end up not in ONE connected component, so we need to MERGE connected components
+		//
 		// Modified algorithm:
 		// a. Each connected component is a sample set. So if there are n connected components,
 		// there are n sample set. 
 		// b. for each sample set, use all of the sample to find the fitted model. In our case, an ellipse
-		// c. go back to check the sample set, and remove the sample set if some percentage of sample don't fall on the ellipse
-		// d. loop a - c for all sample set
+		// c. go back to check the sample set, and remove the sample set if some criteria is not met
+		// d. merge the connected components if needed
+		// e. loop a - d for all sample set
 
 		// 1. find connected components
 		FindConnectedComp(output);
@@ -439,7 +662,7 @@ void Segmentor::Process(cv::Mat & input, cv::Mat & output)
 
 		// overlay the ellipse on top of the image
 		output = input;
-		int numComponents = m_Data.size();
+		int numComponents = m_EllipseBox.size();
 
 		for (int i = 0; i < numComponents; i++)
 		{
