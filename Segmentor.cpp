@@ -11,7 +11,8 @@
 #define ASPECT_RATIO_THRESH			4.0f
 #define ELLIPSE_OFF_CENTER_THRESH	0.7f
 #define SAME_ELLIPSE_THRESH_RATIO   0.11f
-#define CENTER_DIF_THRESH_RATIO     0.05f			
+#define CENTER_DIF_THRESH_RATIO     0.05f	
+#define MAX_STACK_SIZE				5
 
 // color definition
 #define BLUE   cv::Scalar(255, 0, 0) //BGR
@@ -136,7 +137,7 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 		int size = m_Data[i].size();
 		if (size < MIN_ELEMENT_SIZE)
 		{
-			std::cout << "noise" << std::endl;
+			//std::cout << "noise" << std::endl;
 			keepElement[i] = false;
 			continue;
 		}
@@ -520,7 +521,7 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 		{
 			keepElement.push_back(true);
 		}
-	}
+	}// for (int i = 0; i < numComponents; i++)
 
 	if (!ReOrganizeData(keepElement))
 	{
@@ -541,6 +542,113 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 	cv::imshow("Connected:", tmp2);
 #endif
 
+	numComponents = m_Data.size();
+	
+	m_numCircleStack.push_back(numComponents);
+
+	int stackSize = m_numCircleStack.size();
+	if (stackSize > MAX_STACK_SIZE)
+	{		
+		std::list<int>::iterator it = m_numCircleStack.begin();
+		int numCircle = *it;// first (oldest) element
+		int idxTeBeDeleted = -1;
+
+		const int siz = m_Count.size();
+		
+		bool foundDeleted = siz <= 0 ? true : false;
+		bool foundIncremented = false;
+
+		int maxVote = -1;
+		int maxCircles = -1;
+		int idxIncremented = -1;
+
+		for (int i = 0 ; i < siz ; i++)
+		{
+			// find max
+			if (m_Count[i].second > maxVote)
+			{
+				maxVote = m_Count[i].second;
+				maxCircles = m_Count[i].first;
+			}
+
+			// find match => the one needs to be deleted
+			if (!foundDeleted && numCircle == m_Count[i].first)
+			{
+				idxTeBeDeleted = i;
+				foundDeleted = true;
+			}// if 
+			
+			if (!foundIncremented && numComponents == m_Count[i].first)
+			{
+				idxIncremented = i;
+				foundIncremented = true;
+			}// if 
+
+		}// for i
+
+		if (!foundDeleted)
+		{
+			std::cout << "error in voting system" << std::endl;
+			return false;
+		}
+
+		if (idxIncremented != idxTeBeDeleted)
+		{
+			if (foundIncremented)
+			{
+				m_Count[idxIncremented].second++;
+			}
+			else
+			{
+				m_Count.push_back(std::pair<int, int>(numComponents, 1));
+			}
+
+			if (m_Count[idxTeBeDeleted].second == 1)
+			{
+				m_Count.erase(m_Count.begin() + idxTeBeDeleted);
+			}
+			else
+			{
+				m_Count[idxTeBeDeleted].second--;
+			}
+		}
+
+		m_numCircleStack.pop_front();
+
+		if (numComponents != maxCircles)
+		{
+			std::cout << "circle number not consistant" << std::endl;
+			return false;
+		}
+
+		std::cout << "num circles: " << maxCircles << std::endl;
+	}
+	else
+	{
+		bool foundIncremented = false;
+		const int siz = m_Count.size();
+
+		for (int i = 0; i < siz; i++)
+		{
+			if ( numComponents == m_Count[i].first)
+			{
+				m_Count[i].second++;
+				foundIncremented = true;
+				break;
+			}// if
+		}// for i
+
+		if (!foundIncremented)
+		{
+			m_Count.push_back(std::pair<int, int>(numComponents, 1));
+		}
+
+		// not yet has enough frames
+		std::cout << "not yet has enough frames" << std::endl;
+		return false;
+	}
+
+	return true;
 }//FitEllipse
 
  //=======================================================================
@@ -569,8 +677,6 @@ bool Segmentor::ReOrganizeData(const std::vector<bool> & keepElement)
 
 	m_Data.resize(k);
 	m_EllipseBox.resize(k);
-
-	std::cout << "num elements: " << k << std::endl;
 
 	return true;
 }//ReOrganizeData
@@ -655,22 +761,24 @@ void Segmentor::Process(cv::Mat & input, cv::Mat & output)
 		FindConnectedComp(output);
 
 		// 2 + 3 + 4: loop through each component and fit it to ellipse, delete the noise.
-		if (!FitEllipse(output))
+		if (FitEllipse(output))
 		{
-			return;
+
+			// overlay the ellipse on top of the image
+			output = input;
+			int numComponents = m_EllipseBox.size();
+
+			for (int i = 0; i < numComponents; i++)
+			{
+				const cv::RotatedRect & box = m_EllipseBox[i];
+
+				cv::ellipse(output, box, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
+			}
 		}
-
-		// overlay the ellipse on top of the image
-		output = input;
-		int numComponents = m_EllipseBox.size();
-
-		for (int i = 0; i < numComponents; i++)
+		else
 		{
-			const cv::RotatedRect & box = m_EllipseBox[i];
-
-			cv::ellipse(output, box, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
+			output = input;
 		}
-
 	}//if (doCanny)
 
 	// try Hough Transform for circle
@@ -701,8 +809,6 @@ void Segmentor::Process(cv::Mat & input, cv::Mat & output)
 			cv::circle(output, center, radius, cv::Scalar(0, 0, 255), 3, 8, 0);
 		}
 	}// if (doHough)
-
-	cv::imshow("test input", output);
 
 	return;
 }//Process

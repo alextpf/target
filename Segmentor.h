@@ -6,6 +6,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "videoprocessor.h"
+#include <list>
 
 class Segmentor : public FrameProcessor
 {
@@ -28,4 +29,17 @@ private:
 
 	std::vector< std::vector< cv::Point2i > >	m_Data;
 	std::vector< cv::RotatedRect >				m_EllipseBox;
+
+	//////////////////////
+	// Voting System
+	//////////////////////
+
+	// m_numCircleStack is a queue (FIFO),
+	// each element stores the number of circles found in a frame
+	std::list< int >							m_numCircleStack;
+
+	// m_Count is a vector of std::pairs
+	// each pair stores: 1. number of circles, 2. the votes (summing from the queue)
+	std::vector<std::pair<int/*num circles*/, int/*num vote*/>> m_Count;
+
 };

@@ -47,7 +47,7 @@ void Segmentation()
 	//char filename[] = "alex2";
 	//char filename[] = "clay2";
 	//char filename[] = "trap1";
-	char filename[] = "4";
+	char filename[] = "2";
 	//char filename[] = "thrower1";
 	//char filename[] = "thrower2";
 	//char filename[] = "baseball";
