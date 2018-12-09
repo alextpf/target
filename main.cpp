@@ -40,31 +40,31 @@ void Segmentation()
 
 	//char path[] = "../../foreground/BGSubtractorOptFlow/results/";
 	//char path[] = "../../../data/";
-	char path[] = "D:/backup/OpenCV_proj/shooting_target_recog/data/";
+	char path[] = "C:/Users/alex_/Documents/target_recognition/target/";
 
 	//char path[] = "";
 	//char filename[] = "frisbee-new";//frisbee,clay2, trap1, trap2
 	//char filename[] = "alex2";
 	//char filename[] = "clay2";
 	//char filename[] = "trap1";
-	char filename[] = "2";
+	char filename[] = "3";
 	//char filename[] = "thrower1";
 	//char filename[] = "thrower2";
 	//char filename[] = "baseball";
-	
+
 	char inputMode[] = "";//raw, mog, mog+morph for the input
 	char outputMode[] = "";//raw, mog, mog+morph, contours for the input
 	//int num = 165; // frame number. frisbee: 165, clay2: 178, trap1: 270, trap2: 620
 	//int num = 1211;//alex2
 	//int num = 178;//clay2
 	//int num = 270;//trap1
-	int num = 670;//trap2
+	int num = 484;//trap2
 	//int num = 1095;//thrower1
 	//int num = 830;//thrower2
 	//int num = 120;//baseball
-	
+
 	//int startFrame = 85;// frame number we want to start at
-	int startFrame = 1;// frame number we want to start at
+	int startFrame = 0;// frame number we want to start at
 
 	/////////////////////
 	// Input & Output
@@ -73,7 +73,7 @@ void Segmentation()
 	static int inputType = 1;
 
 	// 0: imgs, 1: video, 2: no output written
-	static int outputType = 2;
+	static int outputType = 0;
 
 	/////////////////
 	// Frame Rate:
@@ -82,7 +82,7 @@ void Segmentation()
 
 	//float delay = 1000. / processor.getFrameRate();
 	//float delay = -1.0f;
-	float delay = 1000. / fps;
+	float delay = 0.0;
 
 	/////////////////////////////////////////////////////
 	// Input
@@ -99,17 +99,13 @@ void Segmentation()
 		for (int i = 0; i < num; i++)
 		{
 			char buffer[100];
-			sprintf_s(buffer, "%s%s/%s/%s_%03i.jpg", path, filename, inputMode, filename, i);
+			sprintf_s( buffer, "%s%s%03i.jpg", path, filename, i );
 
 			std::string name = buffer;
 			imgs.push_back(name);
 		}
 
-		if (!processor.SetInput(imgs))
-		{
-			std::cout << "open file error" << std::endl;
-		}
-		////////////////
+		processor.SetInput( imgs );
 	}
 	break;
 	case 1:
@@ -152,9 +148,8 @@ void Segmentation()
 		// output: images
 		/////////////////////////
 		char buffer[100];
-		sprintf_s(buffer, "%s%s/%s/%s_", path, filename, outputMode, filename);
-
-		processor.setOutput(buffer, ".jpg");
+		sprintf_s( buffer, "%s%s", path, filename );
+		processor.SetOutput(buffer, ".jpg");
 	}
 	break;
 
@@ -164,9 +159,11 @@ void Segmentation()
 		// output: video
 		/////////////////////////
 		char buffer[100];
-		sprintf_s(buffer, "%s%s/%s/%s.mp4", path, filename, outputMode, filename);
+		sprintf_s( buffer, "%s%s.mp4", path, filename );
 
-		processor.setOutput(buffer);
+		int codec = CV_FOURCC( 'D', 'I', 'V', 'X' );
+		int fps = 30;
+		processor.SetOutput(buffer);
 	}
 	break;
 
@@ -177,19 +174,20 @@ void Segmentation()
 	}//switch (outputType)
 
 	// set frame processor
-	processor.setFrameProcessor(&segmentor);
+	processor.SetFrameProcessor(&segmentor);
+	//processor.SetDownSampleRate( 1.5 );
 
 	// Declare a window to display the video
-	processor.displayOutput("Extracted Foreground");
+	processor.DisplayOutput("Extracted Foreground");
 
 	// Declare a window to display the input
-	processor.displayInput("Input");
+	processor.DisplayInput("Input");
 
-	processor.setFrameNumber(startFrame);
-	processor.setDelay(delay);
+	processor.SetFrameNumber(startFrame);
+	processor.SetDelay(delay);
 
 	// Start the Process
-	processor.run();
+	processor.Run();
 
 	cv::waitKey();
 }// Segmentation
@@ -307,7 +305,7 @@ void Processing()
 		char buffer[100];
 		sprintf_s(buffer, "%s%s/%s/%s_", path, filename, outputMode, filename);
 
-		processor.setOutput(buffer, ".jpg");
+		processor.SetOutput(buffer, ".jpg");
 	}
 	break;
 
@@ -321,7 +319,7 @@ void Processing()
 
 		std::string name = buffer;
 		char codec[4];
-		processor.setOutput(name, processor.getCodec(codec), 20.);
+		processor.SetOutput(name, processor.GetCodec(codec), 20.);
 
 	}
 	break;
@@ -333,15 +331,15 @@ void Processing()
 	}
 
 	// Get basic info about video file
-	cv::Size size = processor.getFrameSize();
+	cv::Size size = processor.GetFrameSize();
 	std::cout << size.width << " " << size.height << std::endl;
-	std::cout << processor.getFrameRate() << std::endl;
-	std::cout << processor.getTotalFrameCount() << std::endl;
-	std::cout << processor.getFrameNumber() << std::endl;
-	std::cout << processor.getPositionMS() << std::endl;
+	std::cout << processor.GetFrameRate() << std::endl;
+	std::cout << processor.GetTotalFrameCount() << std::endl;
+	std::cout << processor.GetFrameNumber() << std::endl;
+	std::cout << processor.GetPositionMS() << std::endl;
 
 	// No processing
-	processor.dontCallProcess();
+	processor.DontCallProcess();
 
 	/*char codec[4];
 	processor.setOutput("../../clay2-.avi", processor.getCodec(codec), processor.getFrameRate());
@@ -351,22 +349,22 @@ void Processing()
 	/*processor.setFrameNumber(300);
 	processor.stopAtFrameNo(120);*/
 	//
-	
+
 	//int endTime = 640 * 1000;//ms
 
-	processor.setPositionMS(startTime);
-	processor.stopAtFrameNo(stopFrame);
+	processor.SetPositionMS(startTime);
+	processor.StopAtFrameNo(stopFrame);
 
 	// Declare a window to display the video
-	processor.displayInput("Current Frame");
-	processor.displayOutput("Output Frame");
+	processor.DisplayInput("Current Frame");
+	processor.DisplayOutput("Output Frame");
 
 	// Play the video at the original frame rate
 	//processor.setDelay(1000. / processor.getFrameRate());
-	processor.setDelay(delay);
+	processor.SetDelay(delay);
 
 	// Start the Process
-	processor.run();
+	processor.Run();
 
 	/*std::cout << processor.getFrameNumber() << std::endl;
 	std::cout << processor.getPositionMS() << std::endl;
@@ -380,10 +378,10 @@ int main()
 	// 2: video / image processing
     int method = 1;
     switch (method)
-    {    
+    {
     case 1:
     {
-		Segmentation();        
+		Segmentation();
     }
     break;
     case 2:

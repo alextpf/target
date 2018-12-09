@@ -11,7 +11,7 @@
 #define ASPECT_RATIO_THRESH			4.0f
 #define ELLIPSE_OFF_CENTER_THRESH	0.7f
 #define SAME_ELLIPSE_THRESH_RATIO   0.11f
-#define CENTER_DIF_THRESH_RATIO     0.05f	
+#define CENTER_DIF_THRESH_RATIO     0.05f
 #define MAX_STACK_SIZE				5
 
 // color definition
@@ -22,7 +22,7 @@
 #define WHITE  cv::Scalar(255, 255, 255)
 #define BLACK  cv::Scalar(0,0,0)
 
-//#define DEBUG
+#define DEBUG
 //#define DEBUG_ELLIPSE
 //#define DEBUG_ELLIPSE3
 //#define DEBUG_ELLIPSE2
@@ -130,7 +130,7 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 	for (int i = 0; i < numComponents; i++)
 	{
 		keepElement.push_back(true);//default is to keep this element
-		
+
 		m_EllipseBox.push_back(cv::RotatedRect());// dummy var
 
 		// 1. if the ellipse is too small, delete it
@@ -167,7 +167,7 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 
 #ifdef DEBUG //show ellipse
 		cv::ellipse(tmp1, box, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
-		
+
 		/*cv::Point2f vtx[4];
 		box.points(vtx);
 		for (int j = 0; j < 4; j++)
@@ -221,7 +221,7 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 		// Rotation matrix: rotate counter-clockwise by "u" radian
 		//
 		// | cos(u), -sin(u) |
-		// | sin(u),  cos(u) |		
+		// | sin(u),  cos(u) |
 		//---------------------
 		cv::Matx22f rotMat;
 		rotMat(0, 0) = std::cos(angleRad);
@@ -233,14 +233,14 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 		int errCount = 0;
 		int numErrThresh = size * ELLIPSE_ERR_PERCENTAGE;
 
-#ifdef DEBUG_ELLIPSE2		
+#ifdef DEBUG_ELLIPSE2
 		cv::Mat tmp4 = cv::Mat::zeros(img.rows, img.cols, CV_8UC3);
-		
+
 		cv::Vec3b color(255, 255, 255);
 
 		//m_Data stores (column, row)
 		for (int idx = 0; idx < size; idx++)
-		{	
+		{
 			cv::Matx21f pt(m_Data[i][idx].x - ellipseCenter.x/*col*/, -m_Data[i][idx].y + ellipseCenter.y/*row*/); // such that x pointing right, and y pointing up
 			pt = rotMat * pt;
 
@@ -271,7 +271,7 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 		cv::Vec3b red(0, 0, 255);
 		// now draw the ellipse
 		// (x/a)^2+(y/b)^2 = 1
-		
+
 		for (int r = 0 ; r < img.rows; r++)
 		{
 			for (int c = 0; c < img.cols; c++)
@@ -374,7 +374,7 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 	{
 		mark.push_back(-1);
 	}
-	
+
 	for (int i = 0; i < numComponents; i++)
 	{
 
@@ -415,7 +415,7 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 					float siz = std::min(box1.size.width, box2.size.width);
 
 					const float SAME_ELLIPSE_THRESH = siz * SAME_ELLIPSE_THRESH_RATIO;
-					
+
 					if (widthDif < SAME_ELLIPSE_THRESH && heightDif < SAME_ELLIPSE_THRESH && centerDif < SAME_ELLIPSE_THRESH * 2.0f )
 					{
 						mark[j] = i; // same mark, to be merged
@@ -429,7 +429,7 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 	keepElement.clear();
 
 	for (int i = 0; i < numComponents; i++)
-	{	
+	{
 		keepElement.push_back(true);
 
 		if (mark[i] == -1)
@@ -450,7 +450,7 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 			}
 		}
 	}// for i
-	
+
 	if (!ReOrganizeData(keepElement))
 	{
 		return false;
@@ -477,14 +477,14 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 			const cv::Point center2 = concentricCircles[j].first;
 
 			const float centerDif = std::fabs(center1.x - center2.x) + std::fabs(center1.y - center2.y); // city block distance
-			
+
 			if (centerDif < CENTER_DIF_THRESH)
 			{
 				found = true;
 				map[i] = j;
 				concentricCircles[j].second++;
 				break;
-			}// if 
+			}// if
 		}// for j
 
 		if (!found)
@@ -510,7 +510,7 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 	}// for i
 
 	keepElement.clear();
-	
+
 	for (int i = 0; i < numComponents; i++)
 	{
 		if (map[i] != maxIdx)
@@ -543,18 +543,18 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 #endif
 
 	numComponents = m_Data.size();
-	
+
 	m_numCircleStack.push_back(numComponents);
 
 	int stackSize = m_numCircleStack.size();
 	if (stackSize > MAX_STACK_SIZE)
-	{		
+	{
 		std::list<int>::iterator it = m_numCircleStack.begin();
 		int numCircle = *it;// first (oldest) element
 		int idxTeBeDeleted = -1;
 
 		const int siz = m_Count.size();
-		
+
 		bool foundDeleted = siz <= 0 ? true : false;
 		bool foundIncremented = false;
 
@@ -576,13 +576,13 @@ bool Segmentor::FitEllipse(const cv::Mat & img)
 			{
 				idxTeBeDeleted = i;
 				foundDeleted = true;
-			}// if 
-			
+			}// if
+
 			if (!foundIncremented && numComponents == m_Count[i].first)
 			{
 				idxIncremented = i;
 				foundIncremented = true;
-			}// if 
+			}// if
 
 		}// for i
 
@@ -656,7 +656,7 @@ bool Segmentor::ReOrganizeData(const std::vector<bool> & keepElement)
 {
 	int numElement = m_Data.size();
 	int numEllipse = m_EllipseBox.size();
-	
+
 	if (keepElement.size() != numElement || numEllipse != numElement )
 	{
 		std::cout << "error, inconsistent size" << std::endl;
@@ -702,7 +702,7 @@ void Segmentor::Process(cv::Mat & input, cv::Mat & output)
 
 		cv::Mat tmp;
 		output.convertTo(tmp, CV_8UC1);
-		
+
 #ifdef DEBUG
 		cv::imshow("gauss:", output);
 #endif // DEBUG
@@ -727,11 +727,11 @@ void Segmentor::Process(cv::Mat & input, cv::Mat & output)
 #ifdef DEBUG
 		cv::imshow("noise reduction:", output);
 #endif // DEBUG
-		
+
 		///////////////////////////////////////////////////
-		// Modified RANSAC (random sample consensus):		
+		// Modified RANSAC (random sample consensus):
 		///////////////////////////////////////////////////
-		
+
 		// RANSAC does the following:
 		// 1. randomly select samples
 		// 2. from the samples selected in 1, fit a model to them
@@ -739,9 +739,9 @@ void Segmentor::Process(cv::Mat & input, cv::Mat & output)
 		// 4. loop 1 - 3 until converge
 		//
 		// Now for our case, we have some assumption:
-		// i. each circle are spatially far away from each other. They are physically separate, 
+		// i. each circle are spatially far away from each other. They are physically separate,
 		// and there's no 2 circles that connects to each other through noise (for some target paper, there are
-		// numbers located in between each circle, and after doing "closing", it's possible 2 circles are then 
+		// numbers located in between each circle, and after doing "closing", it's possible 2 circles are then
 		// connected to each other, i.e. being "closed").
 		//
 		// ii. the target paper remains a plane, but the plane isn't necessarily perpendicular to the viewing angle.
@@ -751,7 +751,7 @@ void Segmentor::Process(cv::Mat & input, cv::Mat & output)
 		//
 		// Modified algorithm:
 		// a. Each connected component is a sample set. So if there are n connected components,
-		// there are n sample set. 
+		// there are n sample set.
 		// b. for each sample set, use all of the sample to find the fitted model. In our case, an ellipse
 		// c. go back to check the sample set, and remove the sample set if some criteria is not met
 		// d. merge the connected components if needed
@@ -772,7 +772,8 @@ void Segmentor::Process(cv::Mat & input, cv::Mat & output)
 			{
 				const cv::RotatedRect & box = m_EllipseBox[i];
 
-				cv::ellipse(output, box, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
+				static const int thickness = 2;
+				cv::ellipse(output, box, cv::Scalar(0, 0, 255), thickness, cv::LINE_AA);
 			}
 		}
 		else
@@ -815,7 +816,7 @@ void Segmentor::Process(cv::Mat & input, cv::Mat & output)
 
 //=======================================================================
 void Segmentor::DrawContour(
-	cv::Mat & frame, 
+	cv::Mat & frame,
 	const std::vector< std::vector < cv::Point > > & contours,
 	cv::Scalar color)
 {
